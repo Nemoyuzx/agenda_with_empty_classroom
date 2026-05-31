@@ -1,0 +1,27 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local secrets and generated data
+.env
+.env.*
+!.env.example
+output/
+*.xls
+*.xlsx
+
+# Frontend
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+*.log
