@@ -11,6 +11,7 @@ from ..config import (
     APP_TZ,
     EMPTY_CLASSROOM_IDLE_URL,
     EMPTY_CLASSROOM_LOGIN_URL,
+    EMPTY_CLASSROOM_TODAY_URL,
     SJD_LOGIN_PAGE_URL,
     SJD_REST_CLASSROOM_PAGE_URL,
     campus_name,
@@ -23,6 +24,17 @@ from .credentials import resolve_credentials
 
 
 SJD_ORIGIN = "http://jwglweixin.bupt.edu.cn"
+BUILDING_ALIASES = {
+    "1": "教1",
+    "2": "教2",
+    "3": "教3",
+    "4": "教4",
+    "教一楼": "教1",
+    "教二楼": "教2",
+    "教三楼": "教3",
+    "教四楼": "教4",
+    "未来学习大楼": "主楼",
+}
 
 
 def sjd_headers(token: str | None = None, referer: str = SJD_REST_CLASSROOM_PAGE_URL) -> dict[str, str]:
@@ -66,6 +78,20 @@ def parse_classrooms(raw: str) -> list[tuple[str, str, int | None]]:
     return parsed
 
 
+def normalize_building_name(name: str) -> str:
+    clean = str(name or "").strip()
+    clean = re.sub(r"^(校本部|西土城|沙河)[-－—–]", "", clean)
+    return BUILDING_ALIASES.get(clean, clean or "未知教学楼")
+
+
+def normalize_room_name(room: str, building: str) -> str:
+    clean = str(room or "").strip()
+    building_match = re.fullmatch(r"教([1-4])", building)
+    if building_match and clean.startswith(f"{building_match.group(1)}-"):
+        return clean.split("-", 1)[1].strip() or clean
+    return clean
+
+
 async def _login_empty_classroom(account: str, password: str) -> str:
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         try:
@@ -101,24 +127,22 @@ async def _login_empty_classroom(account: str, password: str) -> str:
 def format_room_name(classroom: dict[str, Any]) -> str:
     room_number = str(classroom.get("classroomnumber") or classroom.get("classroomNumber") or "").strip()
     room_label = str(classroom.get("classroomname") or classroom.get("classroomName") or room_number).strip()
-    if room_number and room_number not in room_label:
-        return f"{room_label}{room_number}"
     return room_label or room_number or str(classroom.get("classroomId") or "未知教室")
 
 
 def parse_idle_classroom_groups(groups: list[dict[str, Any]], slot: int, room_map: dict[str, dict]) -> None:
     for group in groups:
-        building = str(
+        building = normalize_building_name(str(
             group.get("teachingBuildingName")
             or group.get("buildingName")
             or group.get("teachingbuildingname")
             or "未知教学楼"
-        ).strip()
+        ))
         if not building:
             building = "未知教学楼"
 
         for classroom in group.get("classroomList") or []:
-            room = format_room_name(classroom)
+            room = normalize_room_name(format_room_name(classroom), building)
             key = f"{building}-{room}"
             try:
                 size = int(classroom.get("seatnumber") or classroom.get("seatNumber") or 0) or None
@@ -140,6 +164,65 @@ def parse_idle_classroom_groups(groups: list[dict[str, Any]], slot: int, room_ma
             if existing["size"] is None and size is not None:
                 existing["size"] = size
             existing["available_slots"].add(slot)
+
+
+def parse_today_classroom_items(items: list[dict[str, Any]], room_map: dict[str, dict]) -> None:
+    for item in items:
+        try:
+            slot = int(str(item.get("NODENAME") or item.get("nodeName") or item.get("nodename"))) - 1
+        except (TypeError, ValueError):
+            continue
+        if slot < 0 or slot >= 14:
+            continue
+
+        for raw_building, room, size in parse_classrooms(
+            str(item.get("CLASSROOMS") or item.get("classrooms") or "")
+        ):
+            building = normalize_building_name(raw_building)
+            room = normalize_room_name(room, building)
+            key = f"{building}-{room}"
+            existing = room_map.setdefault(
+                key,
+                {
+                    "id": key,
+                    "building": building,
+                    "room": room,
+                    "name": key,
+                    "size": size,
+                    "type": "",
+                    "available_slots": set(),
+                },
+            )
+            if existing["size"] is None and size is not None:
+                existing["size"] = size
+            existing["available_slots"].add(slot)
+
+
+async def _fetch_today_classrooms(
+    client: httpx.AsyncClient,
+    token: str,
+    campus_id: str,
+) -> list[dict[str, Any]]:
+    try:
+        response = await client.get(
+            EMPTY_CLASSROOM_TODAY_URL,
+            params={"campusId": campus_id},
+            headers=sjd_headers(token),
+        )
+    except httpx.HTTPError as exc:
+        raise BuptServiceError("今日空教室数据获取失败，请稍后重试。") from exc
+
+    if response.status_code >= 400:
+        raise BuptServiceError(f"今日空教室数据获取失败，HTTP {response.status_code}。")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BuptServiceError("今日空教室服务返回了无法识别的数据。") from exc
+
+    if str(payload.get("code")) != "1":
+        message = payload.get("Msg") or payload.get("msg") or "今日空教室数据获取失败。"
+        raise BuptServiceError(str(message))
+    return payload.get("data") or []
 
 
 async def _fetch_idle_classroom_slot(
@@ -189,17 +272,22 @@ async def fetch_classrooms(
     user, secret = resolve_credentials(account, password)
     token = await _login_empty_classroom(user, secret)
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        slot_payloads = await asyncio.gather(
-            *[
-                _fetch_idle_classroom_slot(client, token, service_date, normalized_campus_id, slot)
-                for slot in range(14)
-            ]
-        )
-
     room_map: dict[str, dict] = {}
-    for slot, groups in slot_payloads:
-        parse_idle_classroom_groups(groups, slot, room_map)
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        if service_date == today_in_app_tz():
+            parse_today_classroom_items(
+                await _fetch_today_classrooms(client, token, normalized_campus_id),
+                room_map,
+            )
+        else:
+            slot_payloads = await asyncio.gather(
+                *[
+                    _fetch_idle_classroom_slot(client, token, service_date, normalized_campus_id, slot)
+                    for slot in range(14)
+                ]
+            )
+            for slot, groups in slot_payloads:
+                parse_idle_classroom_groups(groups, slot, room_map)
 
     rooms = [
         ClassroomStatus(

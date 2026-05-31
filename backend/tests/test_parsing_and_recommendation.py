@@ -4,7 +4,11 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from backend.app.models import ClassroomStatus, ClassroomsResponse, Course
-from backend.app.services.classrooms import parse_classroom, parse_idle_classroom_groups
+from backend.app.services.classrooms import (
+    parse_classroom,
+    parse_idle_classroom_groups,
+    parse_today_classroom_items,
+)
 from backend.app.services.recommender import compact_ranges, date_state, recommend
 from backend.app.services.schedule import (
     encode_login,
@@ -102,10 +106,10 @@ def test_parse_idle_classroom_groups_merges_slots():
             "teachingBuildingName": "校本部-教三楼",
             "classroomList": [
                 {
-                    "classroomId": "335",
-                    "classroomname": "335",
-                    "classroomnumber": "335",
-                    "seatnumber": "90",
+                    "classroomId": "238",
+                    "classroomname": "3-335",
+                    "classroomnumber": "238",
+                    "seatnumber": "217",
                 }
             ],
         }
@@ -113,9 +117,24 @@ def test_parse_idle_classroom_groups_merges_slots():
     parse_idle_classroom_groups(groups, 0, room_map)
     parse_idle_classroom_groups(groups, 2, room_map)
 
-    room = room_map["校本部-教三楼-335"]
-    assert room["size"] == 90
+    room = room_map["教3-335"]
+    assert room["size"] == 217
     assert room["available_slots"] == {0, 2}
+
+
+def test_parse_today_classroom_items_uses_node_name_as_available_slot():
+    room_map = {}
+    parse_today_classroom_items(
+        [
+            {"NODENAME": "1", "CLASSROOMS": "3-335(217),2-201(180)"},
+            {"NODENAME": "3", "CLASSROOMS": "3-305(50),2-201(180)"},
+        ],
+        room_map,
+    )
+
+    assert room_map["教3-335"]["available_slots"] == {0}
+    assert room_map["教2-201"]["available_slots"] == {0, 2}
+    assert room_map["教3-305"]["available_slots"] == {2}
 
 
 def test_compact_ranges():

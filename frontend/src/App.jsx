@@ -556,7 +556,7 @@ function App() {
             </div>
             {classrooms?.provider ? (
               <p className="muted source-note">
-                数据源：移动教务 sjd 今日空闲教室
+                数据源：移动教务 restClassroom 今日空教室
                 {recommendationItems.length ? ' · 已计算推荐' : ''}
               </p>
             ) : null}
