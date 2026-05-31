@@ -98,6 +98,10 @@ function slotsToRanges(slots, slotMeta) {
   return ranges
 }
 
+function displayBuildingName(name) {
+  return String(name || '').replaceAll('未来学习大楼', '主楼')
+}
+
 function App() {
   const [metadata, setMetadata] = useState({ campuses: [], slots: FALLBACK_SLOTS })
   const [credentials, setCredentials] = useState({ account: '', password: '' })
@@ -169,6 +173,13 @@ function App() {
         ? current.filter((item) => item !== building)
         : [...current, building]
     ))
+  }
+
+  function selectCampus(nextCampusId) {
+    setCampusId(nextCampusId)
+    setSelectedBuildings([])
+    setClassrooms(null)
+    setRecommendations(null)
   }
 
   async function runTask(name, task) {
@@ -298,14 +309,22 @@ function App() {
               日期
               <input type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} />
             </label>
-            <label>
+            <div className="field-group">
               校区
-              <select value={campusId} onChange={(event) => setCampusId(event.target.value)}>
+              <div className="campus-options">
                 {(metadata.campuses || []).map((campus) => (
-                  <option key={campus.id} value={campus.id}>{campus.name}</option>
+                  <button
+                    key={campus.id}
+                    type="button"
+                    className={campusId === campus.id ? 'active' : ''}
+                    onClick={() => selectCampus(campus.id)}
+                  >
+                    <MapPin size={15} />
+                    {campus.name}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+            </div>
             <label>
               最少座位
               <input
@@ -426,7 +445,7 @@ function App() {
                   onClick={() => toggleBuilding(building)}
                 >
                   <MapPin size={15} />
-                  {building}
+                  {displayBuildingName(building)}
                 </button>
               )) : <div className="empty-state">获取空教室后可筛选教学楼。</div>}
             </div>
@@ -446,7 +465,7 @@ function App() {
               {filteredRooms.length ? filteredRooms.slice(0, 80).map((room) => (
                 <article key={room.id} className="room-card">
                   <div>
-                    <strong>{room.name}</strong>
+                    <strong>{displayBuildingName(room.name)}</strong>
                     <span>{room.size ? `${room.size} 座` : '座位未知'}</span>
                   </div>
                   <p>{slotsToRanges(room.available_slots.filter((slot) => activeSelectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
@@ -466,7 +485,7 @@ function App() {
               {recommendations?.recommendations?.length ? recommendations.recommendations.slice(0, 24).map((item) => (
                 <article key={item.classroom.id} className="recommendation-row">
                   <div>
-                    <strong>{item.classroom.name}</strong>
+                    <strong>{displayBuildingName(item.classroom.name)}</strong>
                     <span>{item.classroom.size ? `${item.classroom.size} 座` : '座位未知'} · 评分 {item.score}</span>
                   </div>
                   <div className="range-tags">
