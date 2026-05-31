@@ -33,6 +33,7 @@ class RecommendationRequest(ScheduleRequest):
     selected_slots: list[int] | None = None
     buildings: list[str] = Field(default_factory=list)
     min_seats: int = 0
+    use_schedule_filter: bool = True
 
 
 class Course(BaseModel):

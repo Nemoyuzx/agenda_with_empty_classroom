@@ -82,3 +82,45 @@ def test_recommend_prioritizes_longest_stay():
     assert date_state(courses, date(2026, 3, 2), date(2026, 3, 2)).busy_slots == [2, 3]
     assert result.recommendations[0].classroom.name == "A-101"
     assert result.recommendations[0].longest_range.length == 4
+
+
+def test_recommend_can_ignore_personal_schedule_filter():
+    courses = [
+        Course(
+            id="c1",
+            name="课程",
+            weekday=1,
+            week_numbers=[1],
+            start_slot=2,
+            end_slot=3,
+        )
+    ]
+    classrooms = ClassroomsResponse(
+        campus_id="01",
+        campus_name="西土城",
+        target_date=date(2026, 3, 2),
+        fetched_at=datetime.now(ZoneInfo("Asia/Shanghai")),
+        provider="jwglweixin",
+        rooms=[
+            ClassroomStatus(
+                id="A-101",
+                building="A",
+                room="101",
+                name="A-101",
+                size=80,
+                available_slots=[2, 3],
+            ),
+        ],
+    )
+    result = recommend(
+        courses,
+        date(2026, 3, 2),
+        classrooms,
+        date(2026, 3, 2),
+        [2, 3],
+        [],
+        0,
+        use_schedule_filter=False,
+    )
+    assert result.selected_slots == [2, 3]
+    assert result.recommendations[0].classroom.name == "A-101"

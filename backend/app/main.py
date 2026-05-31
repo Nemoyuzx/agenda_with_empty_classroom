@@ -95,6 +95,7 @@ async def recommendations(payload: RecommendationRequest) -> RecommendationRespo
             selected_slots=payload.selected_slots,
             buildings=payload.buildings,
             min_seats=payload.min_seats,
+            use_schedule_filter=payload.use_schedule_filter,
         )
     except BuptServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
