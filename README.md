@@ -3,7 +3,7 @@
 基于 Python/FastAPI 与 React/Vite 的北邮空教室查询工具。项目参考了：
 
 - `Nemoyuzx/BUPT-Auto-Syllabu--` 的新版教务课表登录与 XLS 解析流程
-- `Jraaay/EmptyClassroom` 的微信教务空教室接口与按节次聚合思路
+- `Jraaay/EmptyClassroom` 的空教室按节次聚合思路
 
 ## 功能
 
@@ -44,7 +44,7 @@ BUPT_PASSWORD=你的教务密码
 
 `.env` 已被 `.gitignore` 忽略，不要提交真实密码。
 
-空教室数据只使用北邮微信教务实时接口；如果登录失败或接口不可用，页面会直接显示错误。
+空教室数据只使用北邮移动教务官方页面 `http://jwglweixin.bupt.edu.cn/sjd/#/restClassroom` 调用的今日空闲教室接口；如果登录失败或接口不可用，页面会直接显示错误。
 
 ## 默认学期
 

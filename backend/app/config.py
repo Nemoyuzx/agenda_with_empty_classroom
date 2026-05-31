@@ -15,8 +15,11 @@ JWGL_HOME_URL = "https://jwgl.bupt.edu.cn/jsxsd/"
 JWGL_LOGIN_URL = "https://jwgl.bupt.edu.cn/jsxsd/xk/LoginToXk"
 JWGL_TIMETABLE_URL = "https://jwgl.bupt.edu.cn/jsxsd/xskb/xskb_print.do"
 
-EMPTY_CLASSROOM_LOGIN_URL = "http://jwglweixin.bupt.edu.cn/bjyddx/login"
-EMPTY_CLASSROOM_QUERY_URL = "http://jwglweixin.bupt.edu.cn/bjyddx/todayClassrooms"
+SJD_LOGIN_PAGE_URL = "http://jwglweixin.bupt.edu.cn/sjd/#/login"
+SJD_REST_CLASSROOM_PAGE_URL = "http://jwglweixin.bupt.edu.cn/sjd/#/restClassroom"
+SJD_API_BASE_URL = os.getenv("SJD_API_BASE_URL", "http://jwglweixin.bupt.edu.cn/bjyddx").rstrip("/")
+EMPTY_CLASSROOM_LOGIN_URL = f"{SJD_API_BASE_URL}/login"
+EMPTY_CLASSROOM_QUERY_URL = f"{SJD_API_BASE_URL}/todayClassrooms"
 
 
 @dataclass(frozen=True)
@@ -27,7 +30,7 @@ class Campus:
 
 CAMPUSES = [
     Campus(id="01", name="西土城"),
-    Campus(id="02", name="沙河"),
+    Campus(id="04", name="沙河"),
 ]
 
 SLOT_TIMES = [

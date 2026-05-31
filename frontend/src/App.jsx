@@ -532,7 +532,7 @@ function App() {
             </div>
             {classrooms?.provider ? (
               <p className="muted source-note">
-                数据源：微信教务实时接口
+                数据源：移动教务 sjd 今日空闲教室
                 {recommendationItems.length ? ' · 已计算推荐' : ''}
               </p>
             ) : null}

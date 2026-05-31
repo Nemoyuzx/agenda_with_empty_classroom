@@ -58,7 +58,7 @@ def test_recommend_prioritizes_longest_stay():
         campus_name="西土城",
         target_date=date(2026, 3, 2),
         fetched_at=datetime.now(ZoneInfo("Asia/Shanghai")),
-        provider="jwglweixin",
+        provider="sjd",
         rooms=[
             ClassroomStatus(
                 id="A-101",
@@ -100,7 +100,7 @@ def test_recommend_can_ignore_personal_schedule_filter():
         campus_name="西土城",
         target_date=date(2026, 3, 2),
         fetched_at=datetime.now(ZoneInfo("Asia/Shanghai")),
-        provider="jwglweixin",
+        provider="sjd",
         rooms=[
             ClassroomStatus(
                 id="A-101",
@@ -132,7 +132,7 @@ def test_recommend_respects_explicit_empty_selected_slots():
         campus_name="西土城",
         target_date=date(2026, 3, 2),
         fetched_at=datetime.now(ZoneInfo("Asia/Shanghai")),
-        provider="jwglweixin",
+        provider="sjd",
         rooms=[
             ClassroomStatus(
                 id="A-101",

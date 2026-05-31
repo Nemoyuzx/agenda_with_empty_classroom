@@ -9,6 +9,8 @@ from ..config import (
     APP_TZ,
     EMPTY_CLASSROOM_LOGIN_URL,
     EMPTY_CLASSROOM_QUERY_URL,
+    SJD_LOGIN_PAGE_URL,
+    SJD_REST_CLASSROOM_PAGE_URL,
     campus_name,
     normalize_campus_id,
     today_in_app_tz,
@@ -16,6 +18,20 @@ from ..config import (
 from ..errors import BuptServiceError
 from ..models import ClassroomStatus, ClassroomsResponse
 from .credentials import resolve_credentials
+
+
+SJD_ORIGIN = "http://jwglweixin.bupt.edu.cn"
+
+
+def sjd_headers(token: str | None = None, referer: str = SJD_REST_CLASSROOM_PAGE_URL) -> dict[str, str]:
+    headers = {
+        "Origin": SJD_ORIGIN,
+        "Referer": referer,
+        "User-Agent": "Mozilla/5.0",
+    }
+    if token:
+        headers["token"] = token
+    return headers
 
 
 def parse_classroom(raw: str) -> tuple[str, str, int | None] | None:
@@ -53,6 +69,7 @@ async def _login_empty_classroom(account: str, password: str) -> str:
         try:
             response = await client.post(
                 EMPTY_CLASSROOM_LOGIN_URL,
+                headers=sjd_headers(referer=SJD_LOGIN_PAGE_URL),
                 data={
                     "userNo": account,
                     "pwd": password,
@@ -98,10 +115,10 @@ async def fetch_classrooms(
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         try:
-            response = await client.get(
+            response = await client.post(
                 EMPTY_CLASSROOM_QUERY_URL,
                 params={"campusId": normalized_campus_id},
-                headers={"token": token},
+                headers=sjd_headers(token),
             )
         except httpx.HTTPError as exc:
             raise BuptServiceError("空教室数据获取失败，请稍后重试。") from exc
