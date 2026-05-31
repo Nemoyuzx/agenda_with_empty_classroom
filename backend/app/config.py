@@ -17,7 +17,6 @@ JWGL_TIMETABLE_URL = "https://jwgl.bupt.edu.cn/jsxsd/xskb/xskb_print.do"
 
 EMPTY_CLASSROOM_LOGIN_URL = "http://jwglweixin.bupt.edu.cn/bjyddx/login"
 EMPTY_CLASSROOM_QUERY_URL = "http://jwglweixin.bupt.edu.cn/bjyddx/todayClassrooms"
-PUBLIC_EMPTY_CLASSROOM_API = os.getenv("PUBLIC_EMPTY_CLASSROOM_API", "https://ec.jray.xyz/api/get_data")
 
 
 @dataclass(frozen=True)

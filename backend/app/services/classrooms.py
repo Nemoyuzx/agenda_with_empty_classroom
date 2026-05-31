@@ -9,7 +9,6 @@ from ..config import (
     APP_TZ,
     EMPTY_CLASSROOM_LOGIN_URL,
     EMPTY_CLASSROOM_QUERY_URL,
-    PUBLIC_EMPTY_CLASSROOM_API,
     campus_name,
     normalize_campus_id,
     today_in_app_tz,
@@ -94,15 +93,8 @@ async def fetch_classrooms(
     if target_date is not None and target_date != service_date:
         raise BuptServiceError("空教室实时服务目前只提供当天数据，请选择今天查询。", 400)
 
-    try:
-        user, secret = resolve_credentials(account, password)
-    except BuptServiceError:
-        return await fetch_public_classrooms(normalized_campus_id)
-
-    try:
-        token = await _login_empty_classroom(user, secret)
-    except BuptServiceError:
-        return await fetch_public_classrooms(normalized_campus_id)
+    user, secret = resolve_credentials(account, password)
+    token = await _login_empty_classroom(user, secret)
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         try:
@@ -170,69 +162,5 @@ async def fetch_classrooms(
         campus_name=campus_name(normalized_campus_id),
         target_date=service_date,
         fetched_at=datetime.now(APP_TZ),
-        rooms=rooms,
-    )
-
-
-async def fetch_public_classrooms(campus_id: str | int | None) -> ClassroomsResponse:
-    normalized_campus_id = normalize_campus_id(campus_id)
-    wanted_campus = campus_name(normalized_campus_id)
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        try:
-            response = await client.get(PUBLIC_EMPTY_CLASSROOM_API)
-        except httpx.HTTPError as exc:
-            raise BuptServiceError("公共空教室数据源不可用，请稍后重试。") from exc
-
-    if response.status_code >= 400:
-        raise BuptServiceError(f"公共空教室数据源获取失败，HTTP {response.status_code}。")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise BuptServiceError("公共空教室数据源返回了无法识别的数据。") from exc
-    if payload.get("code") != 0:
-        raise BuptServiceError("公共空教室数据源返回失败。")
-
-    campus_map = ((payload.get("data") or {}).get("campus_info_map") or {})
-    campus_payload = campus_map.get(wanted_campus)
-    if not campus_payload:
-        available = "、".join(campus_map.keys()) or "无"
-        raise BuptServiceError(f"公共空教室数据源没有 {wanted_campus} 数据，可用校区：{available}。")
-
-    rooms: list[ClassroomStatus] = []
-    for building in (campus_payload.get("building_info_map") or {}).values():
-        building_name = str(building.get("name") or "未知教学楼")
-        class_matrix = building.get("class_matrix") or []
-        classroom_map = building.get("classroom_info_map") or {}
-        for classroom_id, classroom in classroom_map.items():
-            try:
-                room_index = int(classroom_id)
-            except (TypeError, ValueError):
-                room_index = int(classroom.get("building_id") or 0)
-            available_slots: list[int] = []
-            for slot_index, row in enumerate(class_matrix[:14]):
-                if room_index < len(row) and row[room_index] == 0:
-                    available_slots.append(slot_index)
-            room_name = str(classroom.get("name") or classroom_id)
-            full_name = f"{building_name}-{room_name}"
-            rooms.append(
-                ClassroomStatus(
-                    id=full_name,
-                    building=building_name,
-                    room=room_name,
-                    name=full_name,
-                    size=classroom.get("size") or None,
-                    type=classroom.get("type") or "",
-                    available_slots=available_slots,
-                    source="jray_public",
-                )
-            )
-
-    rooms.sort(key=lambda item: (item.building, item.room))
-    return ClassroomsResponse(
-        campus_id=normalized_campus_id,
-        campus_name=wanted_campus,
-        target_date=today_in_app_tz(),
-        fetched_at=datetime.now(APP_TZ),
-        provider="jray_public",
         rooms=rooms,
     )

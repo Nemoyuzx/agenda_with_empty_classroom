@@ -408,7 +408,7 @@ function App() {
               <strong>{needsBuildingSelection ? 0 : filteredRooms.length}</strong>
             </div>
             <div>
-              <span>{classrooms?.provider === 'jray_public' ? '公共源推荐' : '推荐结果'}</span>
+              <span>推荐结果</span>
               <strong>{recommendationItems.length || 0}</strong>
             </div>
           </section>
@@ -532,7 +532,7 @@ function App() {
             </div>
             {classrooms?.provider ? (
               <p className="muted source-note">
-                数据源：{classrooms.provider === 'jray_public' ? 'Jraaay 公共实时数据' : '微信教务实时接口'}
+                数据源：微信教务实时接口
                 {recommendationItems.length ? ' · 已计算推荐' : ''}
               </p>
             ) : null}

@@ -65,7 +65,7 @@ class ClassroomStatus(BaseModel):
     size: int | None = None
     type: str = ""
     available_slots: list[int] = Field(default_factory=list)
-    source: Literal["jwglweixin", "jray_public"] = "jwglweixin"
+    source: Literal["jwglweixin"] = "jwglweixin"
 
 
 class ClassroomsResponse(BaseModel):
@@ -74,7 +74,7 @@ class ClassroomsResponse(BaseModel):
     target_date: date
     fetched_at: datetime
     realtime: bool = True
-    provider: Literal["jwglweixin", "jray_public"] = "jwglweixin"
+    provider: Literal["jwglweixin"] = "jwglweixin"
     rooms: list[ClassroomStatus]
 
 
