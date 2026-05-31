@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from typing import Any
 
 import httpx
 import xlrd
@@ -12,10 +13,12 @@ from ..config import (
     JWGL_HOME_URL,
     JWGL_LOGIN_URL,
     JWGL_TIMETABLE_URL,
+    SJD_STUDENT_CURRICULUM_URL,
     SLOT_TIMES,
 )
 from ..errors import BuptServiceError
 from ..models import Course, ScheduleResponse
+from .classrooms import _login_empty_classroom, sjd_headers
 from .credentials import resolve_credentials
 
 KEY_STR = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
@@ -120,6 +123,133 @@ def _slot_time_range(start_slot: int, end_slot: int) -> str:
     return f"{start}-{end}"
 
 
+def parse_sjd_week_numbers(course: dict[str, Any]) -> list[int]:
+    details = str(course.get("classWeekDetails") or "")
+    weeks = [int(value) for value in re.findall(r"\d+", details)]
+    if weeks:
+        return sorted(set(weeks))
+    return expand_week_numbers(str(course.get("classWeek") or ""))
+
+
+def parse_sjd_slots(course: dict[str, Any]) -> tuple[int, int] | None:
+    class_time = str(course.get("classTime") or "")
+    nodes = [int(value) for value in re.findall(r"\d{2}", class_time[1:])]
+    if not nodes:
+        nodes = [int(value) for value in re.findall(r"\d+", str(course.get("weekNoteDetail") or ""))]
+    if not nodes:
+        return None
+    start_slot = min(nodes) - 1
+    end_slot = max(nodes) - 1
+    if start_slot < 0 or end_slot >= len(SLOT_TIMES) or start_slot > end_slot:
+        return None
+    return start_slot, end_slot
+
+
+def iter_sjd_course_items(raw_items: Any):
+    if isinstance(raw_items, dict):
+        if raw_items.get("courseName") or raw_items.get("jx0408id"):
+            yield raw_items
+            return
+        for value in raw_items.values():
+            yield from iter_sjd_course_items(value)
+    elif isinstance(raw_items, list):
+        for item in raw_items:
+            yield from iter_sjd_course_items(item)
+
+
+def parse_sjd_courses(payload: dict[str, Any], term_id: str, term_start_date: date) -> ScheduleResponse:
+    data = payload.get("data") or []
+    if not data:
+        raise BuptServiceError("移动教务课表返回为空。")
+
+    root = data[0]
+    raw_items = root.get("item") or root.get("courses") or []
+    courses: list[Course] = []
+    seen_ids: set[str] = set()
+    for raw_course in iter_sjd_course_items(raw_items):
+        slots = parse_sjd_slots(raw_course)
+        if slots is None:
+            continue
+        start_slot, end_slot = slots
+        try:
+            weekday = int(str(raw_course.get("weekDay") or str(raw_course.get("classTime") or "")[:1]))
+        except ValueError:
+            continue
+        if weekday < 1 or weekday > 7:
+            continue
+
+        name = str(raw_course.get("courseName") or "未命名课程").strip()
+        teacher = str(raw_course.get("teacherName") or "").strip()
+        building = str(raw_course.get("buildingName") or "").strip()
+        room = str(raw_course.get("classroomName") or raw_course.get("location") or "").strip()
+        location = f"{building}-{room}" if building and room and building not in room else room or building
+        week_text = str(raw_course.get("classWeek") or raw_course.get("classWeekDetails") or "").strip()
+        week_numbers = parse_sjd_week_numbers(raw_course)
+        stable = "|".join(
+            [
+                str(raw_course.get("jx0408id") or ""),
+                name,
+                teacher,
+                location,
+                week_text,
+                str(weekday),
+                str(start_slot),
+                str(end_slot),
+            ]
+        )
+        course_id = hashlib.sha1(stable.encode("utf-8")).hexdigest()[:12]
+        if course_id in seen_ids:
+            continue
+        seen_ids.add(course_id)
+        courses.append(
+            Course(
+                id=course_id,
+                name=name,
+                teacher=teacher,
+                room=location,
+                week_text=week_text,
+                week_numbers=week_numbers,
+                weekday=weekday,
+                start_slot=start_slot,
+                end_slot=end_slot,
+                section_text=f"{start_slot + 1}-{end_slot + 1}节",
+                time_range=str(raw_course.get("startTime") or SLOT_TIMES[start_slot][0])
+                + "-"
+                + str(raw_course.get("endTIme") or raw_course.get("endTime") or SLOT_TIMES[end_slot][1]),
+            )
+        )
+
+    courses.sort(key=lambda item: (item.weekday, item.start_slot, item.name))
+    return ScheduleResponse(
+        term_id=term_id,
+        term_start_date=term_start_date,
+        fetched_at=datetime.now(APP_TZ),
+        courses=courses,
+    )
+
+
+def infer_term_start_date(payload: dict[str, Any]) -> date | None:
+    data = payload.get("data") or []
+    if not data:
+        return None
+    root = data[0]
+    try:
+        week = int(str(root.get("week") or (root.get("topInfo") or [{}])[0].get("week")))
+    except (TypeError, ValueError, IndexError):
+        return None
+    dates = root.get("date") or []
+    dated = next((item for item in dates if item.get("mxrq") and str(item.get("zc")) != "all"), None)
+    if not dated:
+        return None
+    try:
+        day = date.fromisoformat(str(dated["mxrq"]))
+        weekday = int(str(dated.get("xqid") or day.weekday() + 1))
+    except (TypeError, ValueError):
+        return None
+    monday = day - timedelta(days=weekday - 1)
+    return monday - timedelta(weeks=week - 1)
+
+
 def parse_timetable_xls(content: bytes, term_id: str, term_start_date) -> ScheduleResponse:
     try:
         workbook = xlrd.open_workbook(file_contents=content)
@@ -189,7 +319,55 @@ def parse_timetable_xls(content: bytes, term_id: str, term_start_date) -> Schedu
     )
 
 
-async def fetch_schedule(account: str | None, password: str | None, term_id: str, term_start_date) -> ScheduleResponse:
+async def fetch_sjd_schedule(account: str | None, password: str | None, term_id: str, fallback_term_start_date) -> ScheduleResponse:
+    user, secret = resolve_credentials(account, password)
+    token = await _login_empty_classroom(user, secret)
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        try:
+            current_response = await client.post(
+                SJD_STUDENT_CURRICULUM_URL,
+                params={"week": ""},
+                headers=sjd_headers(token),
+            )
+            all_response = await client.post(
+                SJD_STUDENT_CURRICULUM_URL,
+                params={"week": "all"},
+                headers=sjd_headers(token),
+            )
+        except httpx.HTTPError as exc:
+            raise BuptServiceError("无法连接移动教务课表服务，请稍后重试。") from exc
+
+    for response in (current_response, all_response):
+        if response.status_code >= 400:
+            raise BuptServiceError(f"移动教务课表获取失败，HTTP {response.status_code}。")
+
+    try:
+        current_payload = current_response.json()
+        all_payload = all_response.json()
+    except ValueError as exc:
+        raise BuptServiceError("移动教务课表返回了无法识别的数据。") from exc
+
+    if str(current_payload.get("code")) != "1":
+        raise BuptServiceError(str(current_payload.get("Msg") or current_payload.get("msg") or "移动教务课表获取失败。"))
+    if str(all_payload.get("code")) != "1":
+        raise BuptServiceError(str(all_payload.get("Msg") or all_payload.get("msg") or "移动教务课表获取失败。"))
+
+    inferred_start = infer_term_start_date(current_payload) or fallback_term_start_date
+    inferred_term_id = str(
+        ((current_payload.get("data") or [{}])[0].get("semesterId"))
+        or ((current_payload.get("data") or [{}])[0].get("xnxq01id"))
+        or term_id
+    )
+    return parse_sjd_courses(all_payload, inferred_term_id, inferred_start)
+
+
+async def fetch_schedule_legacy(
+    account: str | None,
+    password: str | None,
+    term_id: str,
+    term_start_date,
+) -> ScheduleResponse:
     user, secret = resolve_credentials(account, password)
     encoded = encode_login(user, secret)
 
@@ -224,3 +402,10 @@ async def fetch_schedule(account: str | None, password: str | None, term_id: str
     if len(content) < 200:
         raise BuptServiceError("教务返回的课表内容为空。")
     return parse_timetable_xls(content, term_id, term_start_date)
+
+
+async def fetch_schedule(account: str | None, password: str | None, term_id: str, term_start_date) -> ScheduleResponse:
+    try:
+        return await fetch_sjd_schedule(account, password, term_id, term_start_date)
+    except BuptServiceError:
+        return await fetch_schedule_legacy(account, password, term_id, term_start_date)

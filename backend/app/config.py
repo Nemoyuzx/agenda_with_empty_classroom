@@ -20,6 +20,7 @@ SJD_REST_CLASSROOM_PAGE_URL = "http://jwglweixin.bupt.edu.cn/sjd/#/restClassroom
 SJD_API_BASE_URL = os.getenv("SJD_API_BASE_URL", "http://jwglweixin.bupt.edu.cn/bjyddx").rstrip("/")
 EMPTY_CLASSROOM_LOGIN_URL = f"{SJD_API_BASE_URL}/login"
 EMPTY_CLASSROOM_IDLE_URL = f"{SJD_API_BASE_URL}/student/getIdleClassroom"
+SJD_STUDENT_CURRICULUM_URL = f"{SJD_API_BASE_URL}/student/curriculum"
 
 
 @dataclass(frozen=True)
