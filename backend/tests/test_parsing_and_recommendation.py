@@ -4,7 +4,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from backend.app.models import ClassroomStatus, ClassroomsResponse, Course
-from backend.app.services.classrooms import parse_classroom
+from backend.app.services.classrooms import parse_classroom, parse_idle_classroom_groups
 from backend.app.services.recommender import compact_ranges, date_state, recommend
 from backend.app.services.schedule import encode_login, expand_week_numbers, parse_cell_courses
 
@@ -35,6 +35,29 @@ def test_parse_cell_courses_from_bupt_cell_text():
 
 def test_parse_classroom_with_size():
     assert parse_classroom("教一楼-101(80)") == ("教一楼", "101", 80)
+
+
+def test_parse_idle_classroom_groups_merges_slots():
+    room_map = {}
+    groups = [
+        {
+            "teachingBuildingName": "校本部-教三楼",
+            "classroomList": [
+                {
+                    "classroomId": "335",
+                    "classroomname": "335",
+                    "classroomnumber": "335",
+                    "seatnumber": "90",
+                }
+            ],
+        }
+    ]
+    parse_idle_classroom_groups(groups, 0, room_map)
+    parse_idle_classroom_groups(groups, 2, room_map)
+
+    room = room_map["校本部-教三楼-335"]
+    assert room["size"] == 90
+    assert room["available_slots"] == {0, 2}
 
 
 def test_compact_ranges():

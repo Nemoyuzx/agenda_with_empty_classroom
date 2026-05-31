@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import date, datetime
+from typing import Any
 
 import httpx
 
 from ..config import (
     APP_TZ,
+    EMPTY_CLASSROOM_IDLE_URL,
     EMPTY_CLASSROOM_LOGIN_URL,
-    EMPTY_CLASSROOM_QUERY_URL,
     SJD_LOGIN_PAGE_URL,
     SJD_REST_CLASSROOM_PAGE_URL,
     campus_name,
@@ -73,9 +75,6 @@ async def _login_empty_classroom(account: str, password: str) -> str:
                 data={
                     "userNo": account,
                     "pwd": password,
-                    "encode": "1",
-                    "captchaData": "",
-                    "codeVal": "",
                 },
             )
         except httpx.HTTPError as exc:
@@ -99,52 +98,33 @@ async def _login_empty_classroom(account: str, password: str) -> str:
     return token
 
 
-async def fetch_classrooms(
-    account: str | None,
-    password: str | None,
-    campus_id: str | int | None,
-    target_date: date | None = None,
-) -> ClassroomsResponse:
-    normalized_campus_id = normalize_campus_id(campus_id)
-    service_date = today_in_app_tz()
-    if target_date is not None and target_date != service_date:
-        raise BuptServiceError("空教室实时服务目前只提供当天数据，请选择今天查询。", 400)
+def format_room_name(classroom: dict[str, Any]) -> str:
+    room_number = str(classroom.get("classroomnumber") or classroom.get("classroomNumber") or "").strip()
+    room_label = str(classroom.get("classroomname") or classroom.get("classroomName") or room_number).strip()
+    if room_number and room_number not in room_label:
+        return f"{room_label}{room_number}"
+    return room_label or room_number or str(classroom.get("classroomId") or "未知教室")
 
-    user, secret = resolve_credentials(account, password)
-    token = await _login_empty_classroom(user, secret)
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        try:
-            response = await client.post(
-                EMPTY_CLASSROOM_QUERY_URL,
-                params={"campusId": normalized_campus_id},
-                headers=sjd_headers(token),
-            )
-        except httpx.HTTPError as exc:
-            raise BuptServiceError("空教室数据获取失败，请稍后重试。") from exc
+def parse_idle_classroom_groups(groups: list[dict[str, Any]], slot: int, room_map: dict[str, dict]) -> None:
+    for group in groups:
+        building = str(
+            group.get("teachingBuildingName")
+            or group.get("buildingName")
+            or group.get("teachingbuildingname")
+            or "未知教学楼"
+        ).strip()
+        if not building:
+            building = "未知教学楼"
 
-    if response.status_code >= 400:
-        raise BuptServiceError(f"空教室数据获取失败，HTTP {response.status_code}。")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise BuptServiceError("空教室服务返回了无法识别的数据。") from exc
-
-    if str(payload.get("code")) != "1":
-        message = payload.get("Msg") or payload.get("msg") or "空教室数据获取失败。"
-        raise BuptServiceError(str(message))
-
-    room_map: dict[str, dict] = {}
-    for item in payload.get("data") or []:
-        try:
-            slot = int(str(item.get("NODENAME") or item.get("nodeName"))) - 1
-        except (TypeError, ValueError):
-            continue
-        if slot < 0 or slot >= 14:
-            continue
-
-        for building, room, size in parse_classrooms(str(item.get("CLASSROOMS") or "")):
+        for classroom in group.get("classroomList") or []:
+            room = format_room_name(classroom)
             key = f"{building}-{room}"
+            try:
+                size = int(classroom.get("seatnumber") or classroom.get("seatNumber") or 0) or None
+            except (TypeError, ValueError):
+                size = None
+
             existing = room_map.setdefault(
                 key,
                 {
@@ -160,6 +140,66 @@ async def fetch_classrooms(
             if existing["size"] is None and size is not None:
                 existing["size"] = size
             existing["available_slots"].add(slot)
+
+
+async def _fetch_idle_classroom_slot(
+    client: httpx.AsyncClient,
+    token: str,
+    target: date,
+    campus_id: str,
+    slot: int,
+) -> tuple[int, list[dict[str, Any]]]:
+    node = f"{slot + 1:02d}{slot + 1:02d}"
+    try:
+        response = await client.post(
+            EMPTY_CLASSROOM_IDLE_URL,
+            params={
+                "date": target.isoformat(),
+                "nodeId": node,
+                "buildingId": "",
+                "campusId": campus_id,
+            },
+            headers=sjd_headers(token),
+        )
+    except httpx.HTTPError as exc:
+        raise BuptServiceError("空教室数据获取失败，请稍后重试。") from exc
+
+    if response.status_code >= 400:
+        raise BuptServiceError(f"空教室数据获取失败，HTTP {response.status_code}。")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise BuptServiceError("空教室服务返回了无法识别的数据。") from exc
+
+    if str(payload.get("code")) != "1":
+        message = payload.get("Msg") or payload.get("msg") or f"第 {slot + 1} 节空教室数据获取失败。"
+        raise BuptServiceError(str(message))
+    return slot, payload.get("data") or []
+
+
+async def fetch_classrooms(
+    account: str | None,
+    password: str | None,
+    campus_id: str | int | None,
+    target_date: date | None = None,
+) -> ClassroomsResponse:
+    normalized_campus_id = normalize_campus_id(campus_id)
+    service_date = target_date or today_in_app_tz()
+
+    user, secret = resolve_credentials(account, password)
+    token = await _login_empty_classroom(user, secret)
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        slot_payloads = await asyncio.gather(
+            *[
+                _fetch_idle_classroom_slot(client, token, service_date, normalized_campus_id, slot)
+                for slot in range(14)
+            ]
+        )
+
+    room_map: dict[str, dict] = {}
+    for slot, groups in slot_payloads:
+        parse_idle_classroom_groups(groups, slot, room_map)
 
     rooms = [
         ClassroomStatus(
