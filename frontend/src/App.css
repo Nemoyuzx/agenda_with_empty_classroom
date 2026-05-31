@@ -148,6 +148,16 @@ label {
   margin-top: 12px;
 }
 
+.primary-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.primary-fields label,
+.primary-fields .field-group {
+  margin-top: 0;
+}
+
 .field-group {
   color: #53605a;
   display: grid;
@@ -169,6 +179,52 @@ select {
   max-width: 100%;
   padding: 0 10px;
   width: 100%;
+}
+
+.advanced-options {
+  border-top: 1px solid #edf0ed;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.advanced-options summary {
+  align-items: center;
+  color: #53605a;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 7px;
+  list-style: none;
+  min-height: 30px;
+}
+
+.advanced-options summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-options summary::after {
+  border-bottom: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  content: '';
+  height: 7px;
+  margin-left: auto;
+  transform: rotate(45deg);
+  width: 7px;
+}
+
+.advanced-options[open] summary::after {
+  transform: rotate(225deg);
+}
+
+.advanced-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.advanced-grid label {
+  margin-top: 0;
 }
 
 input:focus,
@@ -516,6 +572,16 @@ button:disabled {
   .control-panel .panel:nth-of-type(2) label,
   .control-panel .panel:nth-of-type(2) .field-group {
     margin-top: 0;
+  }
+
+  .primary-fields,
+  .advanced-grid {
+    gap: 9px;
+  }
+
+  .advanced-options {
+    margin-top: 0;
+    padding-top: 10px;
   }
 
   input,

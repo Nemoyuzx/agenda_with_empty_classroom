@@ -10,6 +10,7 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
 import './App.css'
@@ -341,53 +342,63 @@ function App() {
               <CalendarDays size={18} />
               <h2>查询条件</h2>
             </div>
-            <label>
-              学期
-              <input value={termId} onChange={(event) => setTermId(event.target.value)} />
-            </label>
-            <label>
-              第一周周一
-              <input type="date" value={termStartDate} onChange={(event) => setTermStartDate(event.target.value)} />
-            </label>
-            <label>
-              日期
-              <input
-                type="date"
-                value={targetDate}
-                onChange={(event) => {
-                  setTargetDate(event.target.value)
-                  setRecommendations(null)
-                }}
-              />
-            </label>
-            <div className="field-group">
-              校区
-              <div className="campus-options">
-                {(metadata.campuses || []).map((campus) => (
-                  <button
-                    key={campus.id}
-                    type="button"
-                    className={campusId === campus.id ? 'active' : ''}
-                    onClick={() => selectCampus(campus.id)}
-                  >
-                    <MapPin size={15} />
-                    {campus.name}
-                  </button>
-                ))}
+            <div className="primary-fields">
+              <label>
+                日期
+                <input
+                  type="date"
+                  value={targetDate}
+                  onChange={(event) => {
+                    setTargetDate(event.target.value)
+                    setRecommendations(null)
+                  }}
+                />
+              </label>
+              <div className="field-group">
+                校区
+                <div className="campus-options">
+                  {(metadata.campuses || []).map((campus) => (
+                    <button
+                      key={campus.id}
+                      type="button"
+                      className={campusId === campus.id ? 'active' : ''}
+                      onClick={() => selectCampus(campus.id)}
+                    >
+                      <MapPin size={15} />
+                      {campus.name}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <label>
+                最少座位
+                <input
+                  type="number"
+                  min="0"
+                  value={minSeats}
+                  onChange={(event) => {
+                    setMinSeats(Number(event.target.value))
+                    setRecommendations(null)
+                  }}
+                />
+              </label>
             </div>
-            <label>
-              最少座位
-              <input
-                type="number"
-                min="0"
-                value={minSeats}
-                onChange={(event) => {
-                  setMinSeats(Number(event.target.value))
-                  setRecommendations(null)
-                }}
-              />
-            </label>
+            <details className="advanced-options">
+              <summary>
+                <SlidersHorizontal size={15} />
+                备用参数
+              </summary>
+              <div className="advanced-grid">
+                <label>
+                  学期
+                  <input value={termId} onChange={(event) => setTermId(event.target.value)} />
+                </label>
+                <label>
+                  第一周周一
+                  <input type="date" value={termStartDate} onChange={(event) => setTermStartDate(event.target.value)} />
+                </label>
+              </div>
+            </details>
           </section>
 
           <section className="panel action-panel">
