@@ -102,6 +102,12 @@ function displayBuildingName(name) {
   return String(name || '').replaceAll('未来学习大楼', '主楼')
 }
 
+function roomCoversSlots(room, slots) {
+  if (!slots.length) return false
+  const availableSlots = new Set(room.available_slots || [])
+  return slots.every((slot) => availableSlots.has(slot))
+}
+
 function App() {
   const [metadata, setMetadata] = useState({ campuses: [], slots: FALLBACK_SLOTS })
   const [credentials, setCredentials] = useState({ account: '', password: '' })
@@ -156,7 +162,7 @@ function App() {
     return (classrooms?.rooms || [])
       .filter((room) => !selectedBuildings.length || selectedBuildings.includes(room.building))
       .filter((room) => !room.size || room.size >= minSeats)
-      .filter((room) => selectedSlots.length > 0 && selectedSlots.every((slot) => room.available_slots.includes(slot)))
+      .filter((room) => roomCoversSlots(room, selectedSlots))
       .sort((a, b) => a.building.localeCompare(b.building, 'zh-Hans-CN') || a.room.localeCompare(b.room, 'zh-Hans-CN'))
   }, [classrooms, minSeats, selectedBuildings, selectedSlots])
 
@@ -269,10 +275,17 @@ function App() {
     [recommendations],
   )
   const recommendationByRoom = useMemo(
-    () => new Map(recommendationItems.map((item) => [item.classroom.id, item])),
-    [recommendationItems],
+    () => new Map(
+      recommendationItems
+        .filter((item) => selectedSlots.length > 0 && roomCoversSlots(
+          { available_slots: item.matched_slots },
+          selectedSlots,
+        ))
+        .map((item) => [item.classroom.id, item]),
+    ),
+    [recommendationItems, selectedSlots],
   )
-  const canShowRecommendationHighlight = showRecommendationHighlight && recommendationItems.length > 0
+  const canShowRecommendationHighlight = showRecommendationHighlight && recommendationByRoom.size > 0
   const needsBuildingSelection = buildings.length > 0 && selectedBuildings.length === 0
   const needsSlotSelection = selectedBuildings.length > 0 && selectedSlots.length === 0
 
@@ -542,7 +555,7 @@ function App() {
               ) : needsSlotSelection ? (
                 <div className="empty-state">未选择节次</div>
               ) : (
-                filteredRooms.length ? filteredRooms.slice(0, 80).map((room) => (
+                filteredRooms.length ? filteredRooms.map((room) => (
                   (() => {
                     const recommendation = canShowRecommendationHighlight ? recommendationByRoom.get(room.id) : null
                     return (
@@ -555,14 +568,13 @@ function App() {
                             {recommendation ? ` · 评分 ${recommendation.score}` : ''}
                           </span>
                         </div>
+                        <p>满足所选时间：{selectedRanges.map((range) => range.label).join(' / ')}</p>
                         {recommendation?.longest_range ? (
                           <p>
                             最长连续 {recommendation.longest_range.length} 节：
                             {recommendation.longest_range.start_time}-{recommendation.longest_range.end_time}
                           </p>
-                        ) : (
-                          <p>{slotsToRanges(room.available_slots.filter((slot) => selectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
-                        )}
+                        ) : null}
                         {recommendation ? (
                           <div className="range-tags">
                             {recommendation.ranges.map((range) => (
