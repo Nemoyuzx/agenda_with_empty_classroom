@@ -244,6 +244,8 @@ function App() {
 
   const activeSelectedSlots = selectedSlots.length ? selectedSlots : freeSlots
   const selectedRanges = slotsToRanges(activeSelectedSlots, slotMeta)
+  const recommendationItems = recommendations?.recommendations || []
+  const hasRecommendationRun = recommendations !== null
 
   return (
     <main className="app-shell">
@@ -367,8 +369,8 @@ function App() {
               <strong>{filteredRooms.length}</strong>
             </div>
             <div>
-              <span>{classrooms?.provider === 'jray_public' ? '公共源推荐' : '连续推荐'}</span>
-              <strong>{recommendations?.recommendations?.length || 0}</strong>
+              <span>{classrooms?.provider === 'jray_public' ? '公共源推荐' : '推荐结果'}</span>
+              <strong>{recommendationItems.length || 0}</strong>
             </div>
           </section>
 
@@ -459,45 +461,46 @@ function App() {
             {classrooms?.provider ? (
               <p className="muted source-note">
                 数据源：{classrooms.provider === 'jray_public' ? 'Jraaay 公共实时数据' : '微信教务实时接口'}
+                {hasRecommendationRun ? ' · 已按连续可待时长排序' : ''}
               </p>
             ) : null}
             <div className="room-list">
-              {filteredRooms.length ? filteredRooms.slice(0, 80).map((room) => (
-                <article key={room.id} className="room-card">
-                  <div>
-                    <strong>{displayBuildingName(room.name)}</strong>
-                    <span>{room.size ? `${room.size} 座` : '座位未知'}</span>
-                  </div>
-                  <p>{slotsToRanges(room.available_slots.filter((slot) => activeSelectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
-                </article>
-              )) : (
-                <div className="empty-state">还没有匹配的空教室。先获取数据，或缩小节次/教学楼限制。</div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel wide">
-            <div className="panel-title">
-              <Sparkles size={18} />
-              <h2>不用换教室推荐</h2>
-            </div>
-            <div className="recommendation-list">
-              {recommendations?.recommendations?.length ? recommendations.recommendations.slice(0, 24).map((item) => (
-                <article key={item.classroom.id} className="recommendation-row">
-                  <div>
-                    <strong>{displayBuildingName(item.classroom.name)}</strong>
-                    <span>{item.classroom.size ? `${item.classroom.size} 座` : '座位未知'} · 评分 {item.score}</span>
-                  </div>
-                  <div className="range-tags">
-                    {item.ranges.map((range) => (
-                      <span key={`${item.classroom.id}-${range.start_slot}-${range.end_slot}`}>
-                        {range.start_time}-{range.end_time}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              )) : (
-                <div className="empty-state">运行推荐后会按连续可待时长排序。</div>
+              {hasRecommendationRun ? (
+                recommendationItems.length ? recommendationItems.slice(0, 80).map((item) => (
+                  <article key={item.classroom.id} className="room-card recommended">
+                    <div>
+                      <strong>{displayBuildingName(item.classroom.name)}</strong>
+                      <span>{item.classroom.size ? `${item.classroom.size} 座` : '座位未知'} · 评分 {item.score}</span>
+                    </div>
+                    {item.longest_range ? (
+                      <p>
+                        最长连续 {item.longest_range.length} 节：
+                        {item.longest_range.start_time}-{item.longest_range.end_time}
+                      </p>
+                    ) : null}
+                    <div className="range-tags">
+                      {item.ranges.map((range) => (
+                        <span key={`${item.classroom.id}-${range.start_slot}-${range.end_slot}`}>
+                          {range.start_time}-{range.end_time}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                )) : (
+                  <div className="empty-state">没有满足当前节次、教学楼和座位限制的连续教室。</div>
+                )
+              ) : (
+                filteredRooms.length ? filteredRooms.slice(0, 80).map((room) => (
+                  <article key={room.id} className="room-card">
+                    <div>
+                      <strong>{displayBuildingName(room.name)}</strong>
+                      <span>{room.size ? `${room.size} 座` : '座位未知'}</span>
+                    </div>
+                    <p>{slotsToRanges(room.available_slots.filter((slot) => activeSelectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
+                  </article>
+                )) : (
+                  <div className="empty-state">还没有匹配的空教室。先获取数据，或缩小节次/教学楼限制。</div>
+                )
               )}
             </div>
           </section>
