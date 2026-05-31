@@ -356,9 +356,6 @@ button:disabled {
 
 .room-list {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  max-height: 420px;
-  overflow: auto;
-  padding-right: 4px;
 }
 
 .building-list {
@@ -612,9 +609,6 @@ button:disabled {
 
   .room-list {
     grid-template-columns: 1fr;
-    max-height: none;
-    overflow: visible;
-    padding-right: 0;
   }
 
   .range-tags span {

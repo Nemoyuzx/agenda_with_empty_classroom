@@ -246,6 +246,7 @@ function App() {
   const selectedRanges = slotsToRanges(activeSelectedSlots, slotMeta)
   const recommendationItems = recommendations?.recommendations || []
   const hasRecommendationRun = recommendations !== null
+  const needsBuildingSelection = buildings.length > 0 && selectedBuildings.length === 0
 
   return (
     <main className="app-shell">
@@ -366,7 +367,7 @@ function App() {
             </div>
             <div>
               <span>匹配教室</span>
-              <strong>{filteredRooms.length}</strong>
+              <strong>{needsBuildingSelection ? 0 : filteredRooms.length}</strong>
             </div>
             <div>
               <span>{classrooms?.provider === 'jray_public' ? '公共源推荐' : '推荐结果'}</span>
@@ -465,7 +466,9 @@ function App() {
               </p>
             ) : null}
             <div className="room-list">
-              {hasRecommendationRun ? (
+              {needsBuildingSelection ? (
+                <div className="empty-state">未选择教学楼</div>
+              ) : hasRecommendationRun ? (
                 recommendationItems.length ? recommendationItems.slice(0, 80).map((item) => (
                   <article key={item.classroom.id} className="room-card recommended">
                     <div>
