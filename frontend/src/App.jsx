@@ -153,13 +153,12 @@ function App() {
     return names.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
   }, [classrooms])
   const filteredRooms = useMemo(() => {
-    const wantedSlots = selectedSlots.length ? selectedSlots : freeSlots
     return (classrooms?.rooms || [])
       .filter((room) => !selectedBuildings.length || selectedBuildings.includes(room.building))
       .filter((room) => !room.size || room.size >= minSeats)
-      .filter((room) => wantedSlots.every((slot) => room.available_slots.includes(slot)))
+      .filter((room) => selectedSlots.length > 0 && selectedSlots.every((slot) => room.available_slots.includes(slot)))
       .sort((a, b) => a.building.localeCompare(b.building, 'zh-Hans-CN') || a.room.localeCompare(b.room, 'zh-Hans-CN'))
-  }, [classrooms, freeSlots, minSeats, selectedBuildings, selectedSlots])
+  }, [classrooms, minSeats, selectedBuildings, selectedSlots])
 
   function updateCredential(field, value) {
     setCredentials((current) => ({ ...current, [field]: value }))
@@ -264,8 +263,7 @@ function App() {
     })
   }
 
-  const activeSelectedSlots = selectedSlots.length ? selectedSlots : freeSlots
-  const selectedRanges = slotsToRanges(activeSelectedSlots, slotMeta)
+  const selectedRanges = slotsToRanges(selectedSlots, slotMeta)
   const recommendationItems = useMemo(
     () => (recommendations ? recommendations.recommendations : []),
     [recommendations],
@@ -276,6 +274,7 @@ function App() {
   )
   const canShowRecommendationHighlight = showRecommendationHighlight && recommendationItems.length > 0
   const needsBuildingSelection = buildings.length > 0 && selectedBuildings.length === 0
+  const needsSlotSelection = selectedBuildings.length > 0 && selectedSlots.length === 0
 
   return (
     <main className="app-shell">
@@ -461,7 +460,7 @@ function App() {
             <div className="slot-grid">
               {slotMeta.map((slot) => {
                 const busy = busySlots.includes(slot.index)
-                const selected = activeSelectedSlots.includes(slot.index)
+                const selected = selectedSlots.includes(slot.index)
                 return (
                   <button
                     key={slot.index}
@@ -540,6 +539,8 @@ function App() {
             <div className="room-list">
               {needsBuildingSelection ? (
                 <div className="empty-state">未选择教学楼</div>
+              ) : needsSlotSelection ? (
+                <div className="empty-state">未选择节次</div>
               ) : (
                 filteredRooms.length ? filteredRooms.slice(0, 80).map((room) => (
                   (() => {
@@ -560,7 +561,7 @@ function App() {
                             {recommendation.longest_range.start_time}-{recommendation.longest_range.end_time}
                           </p>
                         ) : (
-                          <p>{slotsToRanges(room.available_slots.filter((slot) => activeSelectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
+                          <p>{slotsToRanges(room.available_slots.filter((slot) => selectedSlots.includes(slot)), slotMeta).map((range) => range.label).join(' / ')}</p>
                         )}
                         {recommendation ? (
                           <div className="range-tags">

@@ -82,9 +82,10 @@ def recommend(
 ) -> RecommendationResponse:
     date_to_check = target_date or today_in_app_tz()
     state = date_state(courses, date_to_check, term_start_date)
-    valid_selected = sorted({slot for slot in selected_slots or [] if 0 <= slot < 14})
     schedule_allowed_slots = state.free_slots if use_schedule_filter else ALL_SLOTS
-    target_slots = [slot for slot in (valid_selected or schedule_allowed_slots) if slot in set(schedule_allowed_slots)]
+    valid_selected = sorted({slot for slot in selected_slots or [] if 0 <= slot < 14})
+    source_slots = schedule_allowed_slots if selected_slots is None else valid_selected
+    target_slots = [slot for slot in source_slots if slot in set(schedule_allowed_slots)]
     target_slot_set = set(target_slots)
     building_filter = {building for building in buildings if building}
 
