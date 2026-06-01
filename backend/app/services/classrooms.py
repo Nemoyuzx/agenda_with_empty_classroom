@@ -8,6 +8,7 @@ import httpx
 
 from ..config import (
     APP_TZ,
+    CAMPUSES,
     EMPTY_CLASSROOM_LOGIN_URL,
     EMPTY_CLASSROOM_TODAY_URL,
     SJD_LOGIN_PAGE_URL,
@@ -17,7 +18,7 @@ from ..config import (
     today_in_app_tz,
 )
 from ..errors import BuptServiceError
-from ..models import ClassroomStatus, ClassroomsResponse
+from ..models import CLASSROOMS_CACHE_VERSION, ClassroomStatus, ClassroomsCacheResponse, ClassroomsResponse
 from .credentials import resolve_credentials
 
 
@@ -32,6 +33,65 @@ BUILDING_ALIASES = {
     "教三楼": "教3",
     "教四楼": "教4",
     "未来学习大楼": "主楼",
+    "N": "综合教学楼N",
+    "N楼": "综合教学楼N",
+    "N座": "综合教学楼N",
+    "北楼": "综合教学楼N",
+    "综合教学楼N": "综合教学楼N",
+    "综合教学楼N楼": "综合教学楼N",
+    "综合教学楼N座": "综合教学楼N",
+    "综合楼N": "综合教学楼N",
+    "综合楼N楼": "综合教学楼N",
+    "综合N": "综合教学楼N",
+    "S": "综合教学楼S",
+    "S楼": "综合教学楼S",
+    "S座": "综合教学楼S",
+    "南楼": "综合教学楼S",
+    "综合教学楼S": "综合教学楼S",
+    "综合教学楼S楼": "综合教学楼S",
+    "综合教学楼S座": "综合教学楼S",
+    "综合楼S": "综合教学楼S",
+    "综合楼S楼": "综合教学楼S",
+    "综合S": "综合教学楼S",
+    "教学实验综合楼N": "教学实验综合楼N",
+    "教学实验综合楼N楼": "教学实验综合楼N",
+    "教学实验综合楼N座": "教学实验综合楼N",
+    "教学实验综合楼北": "教学实验综合楼N",
+    "教学实验综合楼北楼": "教学实验综合楼N",
+    "教学实验综合楼-N": "教学实验综合楼N",
+    "教学实验综合楼-N楼": "教学实验综合楼N",
+    "教学实验综合楼(综教)N": "教学实验综合楼N",
+    "教学实验综合楼（综教）N": "教学实验综合楼N",
+    "教学实验综合楼N(综教)": "教学实验综合楼N",
+    "教学实验综合楼N（综教）": "教学实验综合楼N",
+    "综教N": "教学实验综合楼N",
+    "综教N楼": "教学实验综合楼N",
+    "综教N座": "教学实验综合楼N",
+    "综教北": "教学实验综合楼N",
+    "综教北楼": "教学实验综合楼N",
+    "综教-N": "教学实验综合楼N",
+    "综教-N楼": "教学实验综合楼N",
+    "教学实验综合楼S": "教学实验综合楼S",
+    "教学实验综合楼S楼": "教学实验综合楼S",
+    "教学实验综合楼S座": "教学实验综合楼S",
+    "教学实验综合楼南": "教学实验综合楼S",
+    "教学实验综合楼南楼": "教学实验综合楼S",
+    "教学实验综合楼-S": "教学实验综合楼S",
+    "教学实验综合楼-S楼": "教学实验综合楼S",
+    "教学实验综合楼(综教)S": "教学实验综合楼S",
+    "教学实验综合楼（综教）S": "教学实验综合楼S",
+    "教学实验综合楼S(综教)": "教学实验综合楼S",
+    "教学实验综合楼S（综教）": "教学实验综合楼S",
+    "综教S": "教学实验综合楼S",
+    "综教S楼": "教学实验综合楼S",
+    "综教S座": "教学实验综合楼S",
+    "综教南": "教学实验综合楼S",
+    "综教南楼": "教学实验综合楼S",
+    "综教-S": "教学实验综合楼S",
+    "综教-S楼": "教学实验综合楼S",
+    "智慧楼": "智慧教学楼",
+    "智慧教室楼": "智慧教学楼",
+    "智慧教室": "智慧教学楼",
 }
 
 
@@ -84,11 +144,51 @@ def parse_classrooms(raw: str) -> list[tuple[str, str, int | None]]:
 def normalize_building_name(name: str) -> str:
     clean = str(name or "").strip().replace("－", "-").replace("—", "-").replace("–", "-")
     clean = re.sub(r"^(校本部|西土城|沙河)-", "", clean)
-    return BUILDING_ALIASES.get(clean, clean or "未知教学楼")
+    compact = clean.replace(" ", "").replace("　", "")
+    return BUILDING_ALIASES.get(compact, clean or "未知教学楼")
 
 
 def original_building_name(name: str) -> bool:
-    return name in {"教1", "教2", "教3", "教4", "主楼"}
+    return name in {
+        "教1",
+        "教2",
+        "教3",
+        "教4",
+        "主楼",
+        "综合教学楼N",
+        "综合教学楼S",
+        "教学实验综合楼N",
+        "教学实验综合楼S",
+        "智慧教学楼",
+    }
+
+
+def infer_teaching_experiment_side(building: str, room_name: str) -> tuple[str, str]:
+    if building != "教学实验综合楼":
+        return building, room_name
+
+    clean_room = (
+        str(room_name or "")
+        .strip()
+        .replace("－", "-")
+        .replace("—", "-")
+        .replace("–", "-")
+        .replace(" ", "")
+        .replace("　", "")
+    )
+    if not clean_room:
+        return building, room_name
+
+    side = clean_room[0]
+    rest = clean_room[1:].lstrip("-")
+    if not rest or not rest[0].isdigit():
+        return building, room_name
+
+    if side in {"N", "n", "北"}:
+        return "教学实验综合楼N", rest
+    if side in {"S", "s", "南"}:
+        return "教学实验综合楼S", rest
+    return building, room_name
 
 
 def extract_room_name(room: str, building: str) -> str | None:
@@ -203,7 +303,7 @@ def parse_today_classroom_items(items: list[dict[str, Any]], room_map: dict[str,
         for raw_building, room, size in parse_classrooms(
             str(item.get("CLASSROOMS") or item.get("classrooms") or "")
         ):
-            building = normalize_building_name(raw_building)
+            building, room = infer_teaching_experiment_side(normalize_building_name(raw_building), room)
             if not original_building_name(building):
                 continue
             room = extract_room_name(room, building)
@@ -294,4 +394,59 @@ async def fetch_classrooms(
         target_date=service_date,
         fetched_at=datetime.now(APP_TZ),
         rooms=rooms,
+    )
+
+
+async def fetch_all_classrooms(
+    account: str | None,
+    password: str | None,
+    target_date: date | None = None,
+) -> ClassroomsCacheResponse:
+    service_date = target_date or today_in_app_tz()
+    if service_date != today_in_app_tz():
+        raise BuptServiceError("空教室实时接口仅支持当天查询。", 400)
+
+    user, secret = resolve_credentials(account, password)
+    token = await _login_empty_classroom(user, secret)
+
+    campuses: list[ClassroomsResponse] = []
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        for campus in CAMPUSES:
+            room_map: dict[str, dict] = {}
+            try:
+                parse_today_classroom_items(
+                    await _fetch_today_classrooms(client, token, campus.id),
+                    room_map,
+                )
+            except BuptServiceError as exc:
+                raise BuptServiceError(f"{campus.name}校区实时教室数据获取失败：{exc.message}") from exc
+
+            rooms = [
+                ClassroomStatus(
+                    id=room["id"],
+                    building=room["building"],
+                    room=room["room"],
+                    name=room["name"],
+                    size=room["size"],
+                    type=room["type"],
+                    available_slots=sorted(room["available_slots"]),
+                )
+                for room in room_map.values()
+            ]
+            rooms.sort(key=lambda item: (item.building, item.room))
+            campuses.append(
+                ClassroomsResponse(
+                    campus_id=campus.id,
+                    campus_name=campus.name,
+                    target_date=service_date,
+                    fetched_at=datetime.now(APP_TZ),
+                    rooms=rooms,
+                )
+            )
+
+    return ClassroomsCacheResponse(
+        cache_version=CLASSROOMS_CACHE_VERSION,
+        target_date=service_date,
+        fetched_at=datetime.now(APP_TZ),
+        campuses=campuses,
     )

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 from .config import DEFAULT_TERM_ID, DEFAULT_TERM_START_DATE
 
+CLASSROOMS_CACHE_VERSION = 2
+
 
 def default_term_start_date() -> date:
     return date.fromisoformat(DEFAULT_TERM_START_DATE)
@@ -76,6 +78,15 @@ class ClassroomsResponse(BaseModel):
     realtime: bool = True
     provider: Literal["sjd"] = "sjd"
     rooms: list[ClassroomStatus]
+
+
+class ClassroomsCacheResponse(BaseModel):
+    cache_version: int = CLASSROOMS_CACHE_VERSION
+    target_date: date
+    fetched_at: datetime
+    realtime: bool = True
+    provider: Literal["sjd"] = "sjd"
+    campuses: list[ClassroomsResponse] = Field(default_factory=list)
 
 
 class DateScheduleState(BaseModel):

@@ -47,6 +47,54 @@ function requestBody(credentials, extras = {}) {
   }
 }
 
+function normalizeCampusId(campusId) {
+  const value = String(campusId || '01').trim()
+  if (/^\d+$/.test(value)) return value.padStart(2, '0')
+  return value
+}
+
+function normalizeClassroomsCache(data) {
+  if (!data) return null
+  if (Array.isArray(data.campuses)) return data
+  if (Array.isArray(data.rooms)) {
+    return {
+      cache_version: data.cache_version || 0,
+      target_date: data.target_date || localDateString(),
+      fetched_at: data.fetched_at || '',
+      realtime: data.realtime ?? true,
+      provider: data.provider || 'sjd',
+      campuses: [data],
+    }
+  }
+  return null
+}
+
+function getCampusClassrooms(cache, campusId) {
+  const normalizedCampusId = normalizeCampusId(campusId)
+  return (cache?.campuses || []).find((campus) => normalizeCampusId(campus.campus_id) === normalizedCampusId) || null
+}
+
+function mergeCampusClassrooms(cache, campusClassrooms) {
+  const current = normalizeClassroomsCache(cache) || {
+    cache_version: 0,
+    target_date: campusClassrooms.target_date || localDateString(),
+    fetched_at: campusClassrooms.fetched_at || '',
+    realtime: campusClassrooms.realtime ?? true,
+    provider: campusClassrooms.provider || 'sjd',
+    campuses: [],
+  }
+  const normalizedCampusId = normalizeCampusId(campusClassrooms.campus_id)
+  return {
+    ...current,
+    target_date: campusClassrooms.target_date || current.target_date,
+    fetched_at: campusClassrooms.fetched_at || current.fetched_at,
+    campuses: [
+      ...current.campuses.filter((campus) => normalizeCampusId(campus.campus_id) !== normalizedCampusId),
+      campusClassrooms,
+    ],
+  }
+}
+
 async function apiPost(path, body) {
   const response = await fetch(path, {
     method: 'POST',
@@ -116,7 +164,7 @@ function App() {
   const [termStartDate, setTermStartDate] = useState('2026-03-02')
   const [campusId, setCampusId] = useState('01')
   const [schedule, setSchedule] = useState(null)
-  const [classrooms, setClassrooms] = useState(null)
+  const [classroomsCache, setClassroomsCache] = useState(null)
   const [recommendations, setRecommendations] = useState(null)
   const [selectedSlots, setSelectedSlots] = useState([])
   const [selectedBuildings, setSelectedBuildings] = useState([])
@@ -155,6 +203,10 @@ function App() {
     () => slotMeta.map((slot) => slot.index).filter((slot) => !busySlots.includes(slot)),
     [busySlots, slotMeta],
   )
+  const classrooms = useMemo(
+    () => getCampusClassrooms(classroomsCache, campusId),
+    [classroomsCache, campusId],
+  )
   const buildings = useMemo(() => {
     const names = [...new Set((classrooms?.rooms || []).map((room) => room.building))]
     return names.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
@@ -192,7 +244,6 @@ function App() {
   function selectCampus(nextCampusId) {
     setCampusId(nextCampusId)
     setSelectedBuildings([])
-    setClassrooms(null)
     setRecommendations(null)
   }
 
@@ -238,11 +289,10 @@ function App() {
 
   async function loadClassrooms() {
     await runTask('classrooms', async () => {
-      const data = await apiPost('/api/classrooms', requestBody(credentials, {
-        campus_id: campusId,
+      const data = await apiPost('/api/classrooms/all', requestBody(credentials, {
         target_date: todayDate,
       }))
-      setClassrooms(data)
+      setClassroomsCache(normalizeClassroomsCache(data))
       setRecommendations(null)
     })
   }
@@ -259,7 +309,7 @@ function App() {
         min_seats: Number(minSeats) || 0,
         use_schedule_filter: usePersonalSchedule,
       }))
-      setClassrooms(data.classrooms)
+      setClassroomsCache((current) => mergeCampusClassrooms(current, data.classrooms))
       if (!schedule) {
         setSchedule({
           term_id: termId,

@@ -192,6 +192,57 @@ def test_parse_today_classroom_items_keeps_future_building_door_ranges():
     assert "主楼-218" not in room_map
 
 
+def test_parse_today_classroom_items_keeps_shahe_buildings():
+    room_map = {}
+    parse_today_classroom_items(
+        [
+            {
+                "NODENAME": "2",
+                "CLASSROOMS": "沙河-N-101(90),沙河-S楼-202(80),智慧教学楼-305-306(60)",
+            },
+            {
+                "NODENAME": "4",
+                "CLASSROOMS": "沙河-智慧教室楼-101(64),沙河-综合教学楼N-120(90),综合教学楼S-211(80)",
+            },
+            {
+                "NODENAME": "6",
+                "CLASSROOMS": (
+                    "沙河-教学实验综合楼-N101(90),教学实验综合楼-N110(117),"
+                    "沙河-教学实验综合楼-北305(60),沙河-教学实验综合楼-S101(90),"
+                    "教学实验综合楼-S202(208),沙河-教学实验综合楼-南305(60),"
+                    "沙河-教学实验综合楼-999(10)"
+                ),
+            },
+            {
+                "NODENAME": "8",
+                "CLASSROOMS": (
+                    "沙河-教学实验综合楼N-101(90),沙河-综教N楼-202(80),"
+                    "教学实验综合楼（综教）N-305-306(60),沙河-教学实验综合楼S-101(90),"
+                    "沙河-综教S楼-202(80),教学实验综合楼（综教）S-305-306(60)"
+                ),
+            },
+        ],
+        room_map,
+    )
+
+    assert room_map["综合教学楼N-101"]["available_slots"] == {1}
+    assert room_map["综合教学楼S-202"]["available_slots"] == {1}
+    assert room_map["智慧教学楼-305-306"]["available_slots"] == {1}
+    assert room_map["智慧教学楼-101"]["available_slots"] == {3}
+    assert room_map["综合教学楼N-120"]["available_slots"] == {3}
+    assert room_map["综合教学楼S-211"]["available_slots"] == {3}
+    assert room_map["教学实验综合楼N-101"]["available_slots"] == {5, 7}
+    assert room_map["教学实验综合楼N-110"]["available_slots"] == {5}
+    assert room_map["教学实验综合楼N-305"]["available_slots"] == {5}
+    assert room_map["教学实验综合楼N-202"]["available_slots"] == {7}
+    assert room_map["教学实验综合楼N-305-306"]["available_slots"] == {7}
+    assert room_map["教学实验综合楼S-101"]["available_slots"] == {5, 7}
+    assert room_map["教学实验综合楼S-202"]["available_slots"] == {5, 7}
+    assert room_map["教学实验综合楼S-305"]["available_slots"] == {5}
+    assert room_map["教学实验综合楼S-305-306"]["available_slots"] == {7}
+    assert "教学实验综合楼-999" not in room_map
+
+
 def test_node_name_to_slot_uses_one_based_nodes():
     assert node_name_to_slot("1") == 0
     assert node_name_to_slot("第14节") == 13

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import CAMPUSES, DEFAULT_TERM_ID, DEFAULT_TERM_START_DATE, slot_payload
 from .errors import BuptServiceError
 from .models import (
+    ClassroomsCacheResponse,
     ClassroomsRequest,
     ClassroomsResponse,
     MetadataResponse,
@@ -19,7 +20,7 @@ from .models import (
     ScheduleRequest,
     ScheduleResponse,
 )
-from .services.classrooms import fetch_classrooms
+from .services.classrooms import fetch_all_classrooms, fetch_classrooms
 from .services.recommender import recommend
 from .services.schedule import fetch_schedule
 
@@ -68,6 +69,14 @@ async def schedule(payload: ScheduleRequest) -> ScheduleResponse:
 async def classrooms(payload: ClassroomsRequest) -> ClassroomsResponse:
     try:
         return await fetch_classrooms(payload.account, payload.password, payload.campus_id, payload.target_date)
+    except BuptServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@app.post("/api/classrooms/all", response_model=ClassroomsCacheResponse)
+async def all_classrooms(payload: ClassroomsRequest) -> ClassroomsCacheResponse:
+    try:
+        return await fetch_all_classrooms(payload.account, payload.password, payload.target_date)
     except BuptServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
