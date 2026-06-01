@@ -19,7 +19,6 @@ SJD_LOGIN_PAGE_URL = "http://jwglweixin.bupt.edu.cn/sjd/#/login"
 SJD_REST_CLASSROOM_PAGE_URL = "http://jwglweixin.bupt.edu.cn/sjd/#/restClassroom"
 SJD_API_BASE_URL = os.getenv("SJD_API_BASE_URL", "http://jwglweixin.bupt.edu.cn/bjyddx").rstrip("/")
 EMPTY_CLASSROOM_LOGIN_URL = f"{SJD_API_BASE_URL}/login"
-EMPTY_CLASSROOM_IDLE_URL = f"{SJD_API_BASE_URL}/student/getIdleClassroom"
 EMPTY_CLASSROOM_TODAY_URL = f"{SJD_API_BASE_URL}/todayClassrooms"
 SJD_STUDENT_CURRICULUM_URL = f"{SJD_API_BASE_URL}/student/curriculum"
 

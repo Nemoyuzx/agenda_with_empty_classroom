@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from backend.app.models import ClassroomStatus, ClassroomsResponse, Course
 from backend.app.services.classrooms import (
+    node_name_to_slot,
     parse_classroom,
     parse_idle_classroom_groups,
     parse_today_classroom_items,
@@ -97,6 +98,7 @@ def test_infer_term_start_date_from_sjd_current_week():
 
 def test_parse_classroom_with_size():
     assert parse_classroom("教一楼-101(80)") == ("教一楼", "101", 80)
+    assert parse_classroom("校本部-教三楼-3-335(90)") == ("校本部-教三楼", "3-335", 90)
 
 
 def test_parse_idle_classroom_groups_merges_slots():
@@ -126,7 +128,7 @@ def test_parse_today_classroom_items_uses_node_name_as_available_slot():
     room_map = {}
     parse_today_classroom_items(
         [
-            {"NODENAME": "1", "CLASSROOMS": "3-335(217),2-201(180)"},
+            {"NODENAME": "1", "CLASSROOMS": "校本部-教三楼-3-335(217),2-201(180)"},
             {"NODENAME": "3", "CLASSROOMS": "3-305(50),2-201(180)"},
         ],
         room_map,
@@ -135,6 +137,65 @@ def test_parse_today_classroom_items_uses_node_name_as_available_slot():
     assert room_map["教3-335"]["available_slots"] == {0}
     assert room_map["教2-201"]["available_slots"] == {0, 2}
     assert room_map["教3-305"]["available_slots"] == {2}
+
+
+def test_parse_today_classroom_items_extracts_stable_room_numbers():
+    room_map = {}
+    parse_today_classroom_items(
+        [
+            {
+                "NODENAME": "1",
+                "CLASSROOMS": "校本部-教二楼-101A441(60),教二楼-406（信通实验室）(30),教二楼-107343(60)",
+            }
+        ],
+        room_map,
+    )
+
+    assert "教2-101" in room_map
+    assert "教2-406" in room_map
+    assert "教2-107" in room_map
+    assert "教2-101A441" not in room_map
+    assert "教2-107343" not in room_map
+
+
+def test_parse_today_classroom_items_filters_non_original_buildings():
+    room_map = {}
+    parse_today_classroom_items(
+        [{"NODENAME": "1", "CLASSROOMS": "校本部-教师自行安排-x(0),未来学习大楼-101(80)"}],
+        room_map,
+    )
+
+    assert "教师自行安排-x" not in room_map
+    assert "主楼-101" in room_map
+
+
+def test_parse_today_classroom_items_keeps_future_building_door_ranges():
+    room_map = {}
+    parse_today_classroom_items(
+        [
+            {
+                "NODENAME": "10",
+                "CLASSROOMS": (
+                    "未来学习大楼-105(36),未来学习大楼-202-203(60),"
+                    "未来学习大楼-217-218(60),未来学习大楼-302-303(60)"
+                ),
+            }
+        ],
+        room_map,
+    )
+
+    assert room_map["主楼-105"]["available_slots"] == {9}
+    assert room_map["主楼-202-203"]["available_slots"] == {9}
+    assert room_map["主楼-217-218"]["available_slots"] == {9}
+    assert room_map["主楼-302-303"]["available_slots"] == {9}
+    assert "主楼-217" not in room_map
+    assert "主楼-218" not in room_map
+
+
+def test_node_name_to_slot_uses_one_based_nodes():
+    assert node_name_to_slot("1") == 0
+    assert node_name_to_slot("第14节") == 13
+    assert node_name_to_slot("15") is None
 
 
 def test_compact_ranges():

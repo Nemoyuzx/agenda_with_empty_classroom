@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from datetime import date, datetime
 from typing import Any
@@ -9,7 +8,6 @@ import httpx
 
 from ..config import (
     APP_TZ,
-    EMPTY_CLASSROOM_IDLE_URL,
     EMPTY_CLASSROOM_LOGIN_URL,
     EMPTY_CLASSROOM_TODAY_URL,
     SJD_LOGIN_PAGE_URL,
@@ -60,7 +58,12 @@ def parse_classroom(raw: str) -> tuple[str, str, int | None] | None:
         clean = clean[: size_match.start()].strip()
 
     clean = clean.replace("－", "-").replace("—", "-").replace("–", "-")
-    if "-" in clean:
+    parts = [part.strip() for part in clean.split("-") if part.strip()]
+    if len(parts) >= 3 and parts[0] in {"校本部", "西土城", "沙河"}:
+        room_start = clean.find(parts[2])
+        building = clean[:room_start].rstrip("-").strip() if room_start >= 0 else parts[0]
+        room = clean[room_start:].strip() if room_start >= 0 else "-".join(parts[1:])
+    elif "-" in clean:
         building, room = clean.split("-", 1)
     else:
         building, room = "未知教学楼", clean
@@ -79,17 +82,38 @@ def parse_classrooms(raw: str) -> list[tuple[str, str, int | None]]:
 
 
 def normalize_building_name(name: str) -> str:
-    clean = str(name or "").strip()
-    clean = re.sub(r"^(校本部|西土城|沙河)[-－—–]", "", clean)
+    clean = str(name or "").strip().replace("－", "-").replace("—", "-").replace("–", "-")
+    clean = re.sub(r"^(校本部|西土城|沙河)-", "", clean)
     return BUILDING_ALIASES.get(clean, clean or "未知教学楼")
 
 
-def normalize_room_name(room: str, building: str) -> str:
-    clean = str(room or "").strip()
+def original_building_name(name: str) -> bool:
+    return name in {"教1", "教2", "教3", "教4", "主楼"}
+
+
+def extract_room_name(room: str, building: str) -> str | None:
+    clean = str(room or "").strip().replace("－", "-").replace("—", "-").replace("–", "-")
+    if not clean:
+        return None
+
     building_match = re.fullmatch(r"教([1-4])", building)
-    if building_match and clean.startswith(f"{building_match.group(1)}-"):
-        return clean.split("-", 1)[1].strip() or clean
-    return clean
+    if building_match:
+        building_number = building_match.group(1)
+        if clean.startswith(f"{building_number}-"):
+            clean = clean.split("-", 1)[1].strip()
+        elif clean.startswith(f"教{building_number}-"):
+            clean = clean.split("-", 1)[1].strip()
+
+    room_match = re.search(r"\d{3}(?:-\d{3})?", clean)
+    return room_match.group(0) if room_match else None
+
+
+def node_name_to_slot(value: str) -> int | None:
+    match = re.search(r"\d+", str(value or "").strip())
+    if not match:
+        return None
+    slot = int(match.group(0)) - 1
+    return slot if 0 <= slot < 14 else None
 
 
 async def _login_empty_classroom(account: str, password: str) -> str:
@@ -140,9 +164,13 @@ def parse_idle_classroom_groups(groups: list[dict[str, Any]], slot: int, room_ma
         ))
         if not building:
             building = "未知教学楼"
+        if not original_building_name(building):
+            continue
 
         for classroom in group.get("classroomList") or []:
-            room = normalize_room_name(format_room_name(classroom), building)
+            room = extract_room_name(format_room_name(classroom), building)
+            if room is None:
+                continue
             key = f"{building}-{room}"
             try:
                 size = int(classroom.get("seatnumber") or classroom.get("seatNumber") or 0) or None
@@ -168,18 +196,19 @@ def parse_idle_classroom_groups(groups: list[dict[str, Any]], slot: int, room_ma
 
 def parse_today_classroom_items(items: list[dict[str, Any]], room_map: dict[str, dict]) -> None:
     for item in items:
-        try:
-            slot = int(str(item.get("NODENAME") or item.get("nodeName") or item.get("nodename"))) - 1
-        except (TypeError, ValueError):
-            continue
-        if slot < 0 or slot >= 14:
+        slot = node_name_to_slot(str(item.get("NODENAME") or item.get("nodeName") or item.get("nodename") or ""))
+        if slot is None:
             continue
 
         for raw_building, room, size in parse_classrooms(
             str(item.get("CLASSROOMS") or item.get("classrooms") or "")
         ):
             building = normalize_building_name(raw_building)
-            room = normalize_room_name(room, building)
+            if not original_building_name(building):
+                continue
+            room = extract_room_name(room, building)
+            if room is None:
+                continue
             key = f"{building}-{room}"
             existing = room_map.setdefault(
                 key,
@@ -225,41 +254,6 @@ async def _fetch_today_classrooms(
     return payload.get("data") or []
 
 
-async def _fetch_idle_classroom_slot(
-    client: httpx.AsyncClient,
-    token: str,
-    target: date,
-    campus_id: str,
-    slot: int,
-) -> tuple[int, list[dict[str, Any]]]:
-    node = f"{slot + 1:02d}{slot + 1:02d}"
-    try:
-        response = await client.post(
-            EMPTY_CLASSROOM_IDLE_URL,
-            params={
-                "date": target.isoformat(),
-                "nodeId": node,
-                "buildingId": "",
-                "campusId": campus_id,
-            },
-            headers=sjd_headers(token),
-        )
-    except httpx.HTTPError as exc:
-        raise BuptServiceError("空教室数据获取失败，请稍后重试。") from exc
-
-    if response.status_code >= 400:
-        raise BuptServiceError(f"空教室数据获取失败，HTTP {response.status_code}。")
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise BuptServiceError("空教室服务返回了无法识别的数据。") from exc
-
-    if str(payload.get("code")) != "1":
-        message = payload.get("Msg") or payload.get("msg") or f"第 {slot + 1} 节空教室数据获取失败。"
-        raise BuptServiceError(str(message))
-    return slot, payload.get("data") or []
-
-
 async def fetch_classrooms(
     account: str | None,
     password: str | None,
@@ -268,26 +262,18 @@ async def fetch_classrooms(
 ) -> ClassroomsResponse:
     normalized_campus_id = normalize_campus_id(campus_id)
     service_date = target_date or today_in_app_tz()
+    if service_date != today_in_app_tz():
+        raise BuptServiceError("空教室实时接口仅支持当天查询。", 400)
 
     user, secret = resolve_credentials(account, password)
     token = await _login_empty_classroom(user, secret)
 
     room_map: dict[str, dict] = {}
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        if service_date == today_in_app_tz():
-            parse_today_classroom_items(
-                await _fetch_today_classrooms(client, token, normalized_campus_id),
-                room_map,
-            )
-        else:
-            slot_payloads = await asyncio.gather(
-                *[
-                    _fetch_idle_classroom_slot(client, token, service_date, normalized_campus_id, slot)
-                    for slot in range(14)
-                ]
-            )
-            for slot, groups in slot_payloads:
-                parse_idle_classroom_groups(groups, slot, room_map)
+        parse_today_classroom_items(
+            await _fetch_today_classrooms(client, token, normalized_campus_id),
+            room_map,
+        )
 
     rooms = [
         ClassroomStatus(

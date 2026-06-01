@@ -115,7 +115,6 @@ function App() {
   const [termId, setTermId] = useState('2025-2026-2')
   const [termStartDate, setTermStartDate] = useState('2026-03-02')
   const [campusId, setCampusId] = useState('01')
-  const [targetDate, setTargetDate] = useState(localDateString())
   const [schedule, setSchedule] = useState(null)
   const [classrooms, setClassrooms] = useState(null)
   const [recommendations, setRecommendations] = useState(null)
@@ -142,10 +141,11 @@ function App() {
   }, [])
 
   const slotMeta = metadata.slots?.length ? metadata.slots : FALLBACK_SLOTS
+  const todayDate = localDateString()
   const courses = useMemo(() => (schedule ? schedule.courses : []), [schedule])
   const weekState = useMemo(
-    () => getWeekState(courses, schedule?.term_start_date || termStartDate, targetDate),
-    [courses, schedule?.term_start_date, targetDate, termStartDate],
+    () => getWeekState(courses, schedule?.term_start_date || termStartDate, todayDate),
+    [courses, schedule?.term_start_date, todayDate, termStartDate],
   )
   const busySlots = useMemo(
     () => (usePersonalSchedule ? weekState.busySlots : []),
@@ -202,6 +202,10 @@ function App() {
     setRecommendations(null)
     if (nextValue) {
       setSelectedSlots((current) => current.filter((slot) => !weekState.busySlots.includes(slot)))
+    } else {
+      setSelectedSlots((current) => (
+        [...new Set([...current, ...weekState.busySlots])].sort((a, b) => a - b)
+      ))
     }
   }
 
@@ -225,7 +229,7 @@ function App() {
       }))
       setSchedule(data)
       setUsePersonalSchedule(true)
-      const nextState = getWeekState(data.courses, data.term_start_date, targetDate)
+      const nextState = getWeekState(data.courses, data.term_start_date, todayDate)
       const nextFreeSlots = slotMeta.map((slot) => slot.index).filter((slot) => !nextState.busySlots.includes(slot))
       setSelectedSlots(nextFreeSlots)
       setRecommendations(null)
@@ -236,7 +240,7 @@ function App() {
     await runTask('classrooms', async () => {
       const data = await apiPost('/api/classrooms', requestBody(credentials, {
         campus_id: campusId,
-        target_date: targetDate,
+        target_date: todayDate,
       }))
       setClassrooms(data)
       setRecommendations(null)
@@ -247,7 +251,7 @@ function App() {
     await runTask('recommendations', async () => {
       const data = await apiPost('/api/recommendations', requestBody(credentials, {
         campus_id: campusId,
-        target_date: targetDate,
+        target_date: todayDate,
         term_id: termId,
         term_start_date: termStartDate,
         selected_slots: selectedSlots,
@@ -299,7 +303,7 @@ function App() {
         </div>
         <div className="status-pill">
           <Clock3 size={16} />
-          <span>{targetDate}</span>
+          <span>{todayDate}</span>
         </div>
       </header>
 
@@ -347,11 +351,8 @@ function App() {
                 日期
                 <input
                   type="date"
-                  value={targetDate}
-                  onChange={(event) => {
-                    setTargetDate(event.target.value)
-                    setRecommendations(null)
-                  }}
+                  value={todayDate}
+                  disabled
                 />
               </label>
               <div className="field-group">
@@ -429,7 +430,7 @@ function App() {
             </div>
             <div>
               <span>匹配教室</span>
-              <strong>{needsBuildingSelection ? 0 : filteredRooms.length}</strong>
+              <strong>{needsBuildingSelection || needsSlotSelection ? 0 : filteredRooms.length}</strong>
             </div>
             <div>
               <span>推荐结果</span>
@@ -483,6 +484,7 @@ function App() {
             </div>
             <div className="slot-grid">
               {slotMeta.map((slot) => {
+                const personalCourseSlot = weekState.busySlots.includes(slot.index)
                 const busy = busySlots.includes(slot.index)
                 const selected = selectedSlots.includes(slot.index)
                 return (
@@ -492,7 +494,7 @@ function App() {
                     className={`slot-cell ${busy ? 'busy' : 'free'} ${selected ? 'selected' : ''}`}
                     onClick={() => !busy && toggleSlot(slot.index)}
                     disabled={busy}
-                    title={busy ? '个人课表占用' : '个人空闲，可筛选教室'}
+                    title={busy ? '个人课表占用' : personalCourseSlot ? '个人课程时间，已纳入筛选' : '个人空闲，可筛选教室'}
                   >
                     <span>{slot.label}</span>
                     <small>{slot.start}-{slot.end}</small>
